@@ -1,0 +1,74 @@
+service: uptime-checker
+
+provider:
+  name: aws
+  runtime: nodejs10.x
+  timeout: 300
+  memorySize: 1856
+  environment:
+    TABLE_NAME: <your table>
+    KEY_NAME: id
+    IMAGE_BUCKET: <your bucket>
+    STATUS_URL: <url to status page>
+  iamRoleStatements:
+    - Effect: "Allow"
+      Action:
+        - "s3:PutObject"
+      Resource: ["arn:aws:s3:::*"]
+    - Effect: 'Allow'
+      Action:
+        - 'dynamodb:GetItem'
+        - 'dynamodb:PutItem'
+        - 'dynamodb:DeleteItem'
+        - 'dynamodb:Query'
+        - 'dynamodb:Scan'
+      Resource:
+        - "Fn::GetAtt": [ <your table>, Arn ]
+
+functions:
+  gatherdata:
+    handler: handler.gatherdata
+    events:
+      - schedule: rate(5 minutes)
+  latest:
+    handler: statushandler.currentstatus
+    memorySize: 512
+    timeout: 30
+    events:
+      - http:
+          path: latest
+          method: get
+  latestdays:
+    handler: statushandler.latestdays
+    memorySize: 512
+    timeout: 30
+    events:
+      - http:
+          path: latest/{days}
+          method: get
+
+resources:
+  Resources:
+    O365UptimeTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:provider.environment.TABLE_NAME}
+        TimeToLiveSpecification: 
+          AttributeName: expiration
+          Enabled: true
+        ProvisionedThroughput:
+          ReadCapacityUnits: 3
+          WriteCapacityUnits: 3
+        AttributeDefinitions:
+          - AttributeName: date
+            AttributeType: S
+          - AttributeName: time
+            AttributeType: S
+        KeySchema:
+          - AttributeName: date
+            KeyType: HASH
+          - AttributeName: time
+            KeyType: RANGE
+package:
+  exclude:
+    - node_modules/puppeteer/.local-chromium/**
